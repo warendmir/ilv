@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>For you</title>
+<style>
+/* ============================================================
+   ПЕРЕМЕННЫЕ ТЕМЫ — здесь можно менять цвета и тайминги
+   ============================================================ */
+:root {
+  /* === ФОНЫ === */
+  --bg-color: #000000;                       /* основной фон страницы */
+  --editor-bg: #0a0a0f;                      /* фон окна редактора */
+  --editor-border: #2a0a18;                  /* рамка редактора */
+  --editor-titlebar-bg: #14060d;             /* фон заголовка редактора */
+
+  /* === ОСНОВНОЙ ЦВЕТ (неоновый красный) === */
+  --neon-red: #ff0033;                       /* базовый неоновый красный */
+  --neon-red-bright: #ff5577;                /* более яркий акцент */
+  --neon-red-dim: #cc0028;                   /* приглушённый */
+  --neon-red-soft: rgba(255, 0, 51, 0.55);   /* мягкое свечение */
+  --neon-red-faint: rgba(255, 0, 51, 0.15);  /* очень мягкое свечение */
+
+  /* === ШРИФТЫ === */
+  --font-mono: 'Consolas', 'Courier New', monospace;
+  --font-size-button: 32px;
+  --font-size-editor: 14px;
+
+  /* === ТАЙМИНГИ АНИМАЦИЙ === */
+  --type-speed-ms: 11;                       /* скорость печати, миллисекунд на символ */
+  --collapse-duration: 700ms;                /* схлопывание кода в точку */
+  --explosion-duration: 900ms;               /* взрыв точки */
+  --heart-build-stagger: 14;                 /* задержка между появлением слов сердца */
+
+  /* === СЕРДЦЕ === */
+  --heart-scale: 30;                         /* размер сердца (px на единицу) */
+  --heart-word-count: 200;                   /* количество слов в облаке */
+
+  /* === ОБЩЕЕ СВЕЧЕНИЕ === */
+  --neon-glow:
+    0 0 4px var(--neon-red),
+    0 0 10px var(--neon-red),
+    0 0 22px var(--neon-red-soft),
+    0 0 40px var(--neon-red-faint);
+}
+
+/* === МОБИЛЬНАЯ АДАПТАЦИЯ — переменные === */
+@media (max-width: 768px), (pointer: coarse) {
+  :root {
+    --heart-scale: 18;
+    --heart-word-count: 90;
+    --font-size-button: 22px;
+    --font-size-editor: 11px;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-color);
+  color: var(--neon-red);
+  font-family: var(--font-mono);
+  cursor: default;
+}
+
+/* Сканлайны/CRT поверх всего */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 0, 51, 0.04) 0px,
+    rgba(255, 0, 51, 0.04) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: screen;
+}
+
+/* Едва заметное мерцание экрана */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  background: var(--neon-red-faint);
+  opacity: 0;
+  animation: flicker 6s infinite;
+}
+@keyframes flicker {
+  0%, 100% { opacity: 0; }
+  4%       { opacity: 0.08; }
+  6%       { opacity: 0; }
+  47%      { opacity: 0; }
+  49%      { opacity: 0.05; }
+  51%      { opacity: 0; }
+}
+
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-window {
+  position: absolute;
+  width: min(680px, 80vw);
+  height: min(420px, 60vh);
+  background: var(--editor-bg);
+  border: 1px solid var(--editor-border);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px var(--neon-red-faint),
+    0 0 60px var(--neon-red-faint),
+    inset 0 0 80px rgba(255, 0, 51, 0.04);
+  overflow: hidden;
+  z-index: 1;
+  transition: opacity var(--collapse-duration) ease,
+              transform var(--collapse-duration) cubic-bezier(0.6, -0.2, 0.7, 0),
+              filter var(--collapse-duration) ease;
+}
+
+.editor-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--editor-titlebar-bg);
+  border-bottom: 1px solid var(--editor-border);
+}
+
+.editor-titlebar .dot {
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.editor-titlebar .dot.red    { background: #ff5f56; box-shadow: 0 0 6px #ff5f56; }
+.editor-titlebar .dot.yellow { background: #ffbd2e; box-shadow: 0 0 6px #ffbd2e; }
+.editor-titlebar .dot.green  { background: #27c93f; box-shadow: 0 0 6px #27c93f; }
+.editor-titlebar .filename {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--neon-red-dim);
+  letter-spacing: 1px;
+}
+
+.editor-body {
+  padding: 18px 22px;
+  height: calc(100% - 38px);
+  overflow: hidden;
+  font-size: var(--font-size-editor);
+  line-height: 1.55;
+  color: var(--neon-red);
+  text-shadow: 0 0 4px var(--neon-red-soft);
+  white-space: pre;
+  position: relative;
+}
+
+#codeOutput {
+  display: inline;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-editor);
+  color: var(--neon-red);
+  white-space: pre;
+}
+
+.cursor {
+  display: inline-block;
+  color: var(--neon-red);
+  text-shadow: 0 0 6px var(--neon-red);
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.tiz-button {
+  position: relative;
+  z-index: 2;
+  padding: 22px 64px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-button);
+  font-weight: 700;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: var(--neon-red);
+  background: rgba(15, 0, 5, 0.55);
+  border: 2px solid var(--neon-red);
+  border-radius: 4px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  text-shadow: var(--neon-glow);
+  box-shadow:
+    0 0 12px var(--neon-red-soft),
+    0 0 30px var(--neon-red-faint),
+    inset 0 0 12px rgba(255, 0, 51, 0.25);
+  animation: pulse 2.4s ease-in-out infinite;
+  overflow: hidden;
+  transition:
+    transform 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.25s ease,
+    opacity 0.5s ease;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 12px var(--neon-red-soft),
+      0 0 30px var(--neon-red-faint),
+      inset 0 0 12px rgba(255, 0, 51, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 22px var(--neon-red),
+      0 0 55px var(--neon-red-soft),
+      inset 0 0 22px rgba(255, 0, 51, 0.4);
+  }
+}
+
+.tiz-button::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -120%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 0, 51, 0.0) 35%,
+    rgba(255, 80, 110, 0.55) 50%,
+    rgba(255, 0, 51, 0.0) 65%,
+    transparent 100%
+  );
+  transition: left 0.6s ease;
+  pointer-events: none;
+}
+
+.tiz-button:hover {
+  color: var(--neon-red-bright);
+  transform: scale(1.06);
+  box-shadow:
+    0 0 28px var(--neon-red),
+    0 0 70px var(--neon-red-soft),
+    inset 0 0 30px rgba(255, 0, 51, 0.5);
+}
+.tiz-button:hover::before { left: 160%; }
+.tiz-button:active { transform: scale(0.97); }
+
+.tiz-button.hidden {
+  opacity: 0;
+  transform: scale(0.6);
+  pointer-events: none;
+}
+
+.editor-window.collapsing {
+  opacity: 0;
+  transform: scale(0.02);
+  filter: blur(6px) brightness(2);
+}
+
+.singularity {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--neon-red-bright);
+  transform: translate(-50%, -50%) scale(0);
+  box-shadow:
+    0 0 20px var(--neon-red),
+    0 0 60px var(--neon-red),
+    0 0 120px var(--neon-red-soft);
+  opacity: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.singularity.flash { animation: explode var(--explosion-duration) ease-out forwards; }
+@keyframes explode {
+  0%   { transform: translate(-50%, -50%) scale(0);   opacity: 0; }
+  20%  { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  60%  { transform: translate(-50%, -50%) scale(8);   opacity: 0.7; }
+  100% { transform: translate(-50%, -50%) scale(20);  opacity: 0; }
+}
+
+.heart-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  perspective: 1200px;
+  background:
+    radial-gradient(
+      ellipse at center,
+      rgba(255, 0, 51, 0.08) 0%,
+      rgba(255, 0, 51, 0.02) 35%,
+      transparent 70%
+    );
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.heart-container.visible  { opacity: 1; pointer-events: auto; }
+.heart-container.dragging { cursor: grabbing; }
+
+.heart-stage {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.love-word {
+  position: absolute;
+  left: 50%; top: 50%;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--neon-red);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(-50%, -50%, 0) scale(0.2);
+  transition: opacity 0.6s ease, transform 0.7s cubic-bezier(0.2, 1.4, 0.4, 1);
+  will-change: transform, opacity;
+  backface-visibility: visible;
+  --bx: 0px;
+  --by: 0px;
+  --bz: 0px;
+  --scale: 1;
+}
+.love-word.shown {
+  opacity: var(--word-opacity, 1);
+  transform:
+    translate3d(
+      calc(-50% + var(--bx)),
+      calc(-50% + var(--by)),
+      var(--bz)
+    )
+    scale(var(--scale));
+}
+
+/* === Дополнительная мобильная подстройка === */
+@media (max-width: 768px), (pointer: coarse) {
+  .editor-window { width: 92vw; height: 55vh; }
+  .tiz-button    { padding: 16px 40px; letter-spacing: 4px; }
+  .tiz-button:hover { transform: none; }
+  body::before   { opacity: 0.6; }
+  body::after    { display: none; }
+}
+</style>
+</head>
+<body>
+  <div class="scene">
+    <div class="editor-window" id="editor">
+      <div class="editor-titlebar">
+        <span class="dot red"></span>
+        <span class="dot yellow"></span>
+        <span class="dot green"></span>
+        <span class="filename">love.js</span>
+      </div>
+      <div class="editor-body"><span id="codeOutput"></span><span class="cursor" id="cursor">▊</span></div>
+    </div>
+
+    <button class="tiz-button" id="tizBtn">Тиц</button>
+
+    <div class="singularity" id="singularity"></div>
+
+    <div class="heart-container" id="heart">
+      <div class="heart-stage" id="heartStage"></div>
+    </div>
+  </div>
+
+<script>
+/* ВАРИАНТЫ НАДПИСЕЙ. Свободно правь — массив используется рандомно. */
+const LOVE_PHRASES = [
+  'I love you',         // English
+  //'Я люблю тебя',       // Russian
+  //'Я тебе кохаю',       // Ukrainian
+  //"Je t'aime",          // French
+  //'Ich liebe dich',     // German
+ // 'Ti amo',             // Italian
+  //'Te amo',             // Spanish
+ // 'Eu te amo',          // Portuguese
+ // 'Σ\' αγαπώ',          // Greek
+ // 'Seni seviyorum',     // Turkish
+  //'Kocham cię',         // Polish
+ // 'Miluji tě',          // Czech
+  //'Jeg elsker dig',     // Danish
+  //'Ik hou van jou',     // Dutch
+  //'Te iubesc',          // Romanian
+  //'Volim te',           // Croatian
+  //'Jag älskar dig',     // Swedish
+  //'愛してる',            // Japanese
+  //'我爱你',              // Chinese
+  //'사랑해',              // Korean
+  //'अहं त्वयि स्निह्यामि', // Sanskrit-style
+  //'تُحِبُّكَ',            // Arabic
+];
+
+const FAKE_CODE =
+`const love = Infinity;
+const forYou = { feel: (x) => x * love };
+
+let heart = new Promise((resolve) => {
+  while (true) {
+    forYou.feel(love);
+  }
+});
+
+function forever() {
+  return love + love;
+}
+
+heart.then(() => console.log('❤'));
+`;
+
+const btn         = document.getElementById('tizBtn');
+const editor      = document.getElementById('editor');
+const codeOutput  = document.getElementById('codeOutput');
+const cursor      = document.getElementById('cursor');
+const singularity = document.getElementById('singularity');
+const heart       = document.getElementById('heart');
+const heartStage  = document.getElementById('heartStage');
+
+const css = getComputedStyle(document.documentElement);
+const TYPE_SPEED     = parseInt(css.getPropertyValue('--type-speed-ms'))      || 22;
+const COLLAPSE_MS    = parseInt(css.getPropertyValue('--collapse-duration'))  || 700;
+const EXPLOSION_MS   = parseInt(css.getPropertyValue('--explosion-duration')) || 900;
+const STAGGER_MS     = parseInt(css.getPropertyValue('--heart-build-stagger'))|| 14;
+const HEART_SCALE    = parseFloat(css.getPropertyValue('--heart-scale'))      || 22;
+const WORD_COUNT_CSS = parseInt(css.getPropertyValue('--heart-word-count'))   || 140;
+
+const IS_MOBILE  = window.matchMedia('(max-width: 768px), (pointer: coarse)').matches;
+// На мобиле больше слов — компенсируем плотностью то, что сердце меньше десктопного.
+// Если хочется ещё гуще или реже — крути 140 здесь и/или PADDING в buildHeart.
+const WORD_COUNT = IS_MOBILE ? Math.min(WORD_COUNT_CSS, 140) : WORD_COUNT_CSS;
+
+let state = 'idle';
+const wordEls = [];
+
+/* === ЭТАПЫ АНИМАЦИИ === */
+function typeCode() {
+  return new Promise((resolve) => {
+    let i = 0;
+    function step() {
+      if (i >= FAKE_CODE.length) { resolve(); return; }
+      codeOutput.textContent += FAKE_CODE[i++];
+      setTimeout(step, TYPE_SPEED);
+    }
+    step();
+  });
+}
+
+function collapseToPoint() {
+  return new Promise((resolve) => {
+    cursor.style.opacity = '0';
+    editor.classList.add('collapsing');
+    setTimeout(resolve, COLLAPSE_MS);
+  });
+}
+
+function explode() {
+  return new Promise((resolve) => {
+    editor.style.display = 'none';
+    singularity.classList.add('flash');
+    setTimeout(resolve, EXPLOSION_MS * 0.55);
+  });
+}
+
+/* === ПОСТРОЕНИЕ СЕРДЦА ===
+   Параметрическое: x = 16 sin³(t), y = -(13 cos t - 5 cos 2t - 2 cos 3t - cos 4t)
+   Rejection-sampling — не даём словам перекрываться.
+*/
+function heartPoint(t) {
+  const x =  16 * Math.pow(Math.sin(t), 3);
+  const y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+  return { x, y };
+}
+
+function buildHeart() {
+  heart.classList.add('visible');
+
+  // Сердце появляется ровно лицом к зрителю.
+  // Цель и её "скорость" — на нуле; дрейф начнётся со следующего кадра
+  // и постепенно мягко "разгонит" сердце. Без скачков, без пауз.
+  rotX = 0; rotY = 0;
+  velX = 0; velY = 0;
+  targetRotX = 0; targetRotY = 0;
+  targetVelX = 0; targetVelY = 0;
+
+  /* === АДАПТИВНОЕ МАСШТАБИРОВАНИЕ ===
+     На мобиле: фикс мелкие шрифты, а SCALE подбираем так, чтобы САМОЕ ДЛИННОЕ
+     слово на краю сердца дошло почти до края экрана (edge-to-edge), но не вылезло.
+     Сохраняем пропорции — сердце масштабируется равномерно, не растягиваем. */
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const vmin = Math.min(vw, vh);
+
+  // Самая длинная фраза среди активных — нужна для расчёта вылета края
+  const LONGEST_PHRASE = LOVE_PHRASES.reduce((m, s) => Math.max(m, s.length), 0);
+  const SAFETY = 0.96;
+
+  let SCALE_USE, FONT_MIN, FONT_MAX;
+  if (IS_MOBILE) {
+    // Мелкие шрифты — приоритет читаемости компактного облака
+    FONT_MIN = 7;
+    FONT_MAX = 10;
+    // Для расчёта SCALE используем СРЕДНЮЮ длину фразы, а не самую длинную —
+    // длинные фразы редко попадают ровно на край, к тому же при placement
+    // мы отбросим те позиции, где слово вылезло бы за экран. Это даёт
+    // заметно более крупное сердце без визуальных проблем.
+    const avgLen = LOVE_PHRASES.reduce((s, p) => s + p.length, 0) / LOVE_PHRASES.length;
+    const wordHalfAvg = avgLen * FONT_MAX * 0.32;
+    // Допускаем небольшой overflow: ~5% — крайние короткие слова могут чуть
+    // выходить за край, это естественно и почти незаметно.
+    const screenHalf = vmin / 2 * 1.05;
+    SCALE_USE = Math.min(HEART_SCALE, (screenHalf - wordHalfAvg) / 16 * SAFETY);
+  } else {
+    // На десктопе используем настройку из CSS — там места хватает
+    FONT_MIN = 11;
+    FONT_MAX = 33;
+    SCALE_USE = HEART_SCALE;
+  }
+  const FONT_SPAN = FONT_MAX - FONT_MIN;
+  const Z_RANGE   = SCALE_USE * 2.0;  // глубина в 3D пропорциональна масштабу
+
+  const placed = [];
+  const HEART_CY = 6;
+  const INWARD_MAX = 0.25;
+  // На мобиле паддинг мельче — слова и так маленькие, упаковываем плотно
+  const PADDING = IS_MOBILE ? 1.5 : 4;
+
+  // Границы экрана для отбраковки слов, которые сильно вылезли бы
+  // (допускаем небольшой overflow 5% — крайнее слово может слегка выйти, это норм)
+  const SCREEN_HALF_W = vw / 2 * 1.05;
+  const SCREEN_HALF_H = vh / 2 * 1.05;
+
+  let placedCount = 0;
+  let attempts = 0;
+  // Больше попыток — поскольку теперь дополнительная отбраковка по краям экрана
+  const maxAttempts = WORD_COUNT * (IS_MOBILE ? 60 : 80);
+
+  while (placedCount < WORD_COUNT && attempts < maxAttempts) {
+    attempts++;
+
+    const t = Math.random() * Math.PI * 2;
+    const { x, y } = heartPoint(t);
+
+    const inward = Math.random() * INWARD_MAX;
+    const cx = x * (1 - inward);
+    const cy = HEART_CY + (y - HEART_CY) * (1 - inward);
+
+    const depth = Math.random() * 2 - 1;
+    const depthAbs = (depth + 1) / 2;
+    const fontSize = FONT_MIN + depthAbs * FONT_SPAN;
+
+    const phrase = LOVE_PHRASES[Math.floor(Math.random() * LOVE_PHRASES.length)];
+
+    const px = cx * SCALE_USE;
+    const py = cy * SCALE_USE;
+    const pz = depth * Z_RANGE;
+
+    const halfW = phrase.length * fontSize * 0.32 + PADDING;
+    const halfH = fontSize * 0.6 + PADDING * 0.5;
+
+    // Отбраковка по краям экрана — длинные фразы на краю не размещаем,
+    // тогда они "сами собой" уходят внутрь сердца, а на краях — короткие слова
+    if (Math.abs(px) + halfW > SCREEN_HALF_W) continue;
+    if (Math.abs(py) + halfH > SCREEN_HALF_H) continue;
+
+    let overlap = false;
+    for (const p of placed) {
+      if (Math.abs(px - p.x) < halfW + p.halfW &&
+          Math.abs(py - p.y) < halfH + p.halfH) {
+        overlap = true;
+        break;
+      }
+    }
+    if (overlap) continue;
+
+    placed.push({ x: px, y: py, halfW, halfH });
+
+    const el = document.createElement('span');
+    el.className = 'love-word';
+    el.textContent = phrase;
+    el.style.fontSize = fontSize + 'px';
+
+    if (IS_MOBILE) {
+      const g1 = 3 + depthAbs * 3;
+      const g2 = 8 + depthAbs * 8;
+      el.style.textShadow =
+        `0 0 ${g1}px var(--neon-red),` +
+        `0 0 ${g2}px var(--neon-red-soft)`;
+    } else {
+      const g1 = 4 + depthAbs * 4;
+      const g2 = 10 + depthAbs * 14;
+      const g3 = 22 + depthAbs * 28;
+      el.style.textShadow =
+        `0 0 ${g1}px var(--neon-red),` +
+        `0 0 ${g2}px var(--neon-red),` +
+        `0 0 ${g3}px var(--neon-red-soft)`;
+    }
+
+    el.style.setProperty('--word-opacity', (0.55 + depthAbs * 0.45).toFixed(2));
+    el.style.setProperty('--bx', px.toFixed(1) + 'px');
+    el.style.setProperty('--by', py.toFixed(1) + 'px');
+    el.style.setProperty('--bz', pz.toFixed(1) + 'px');
+    el.style.setProperty('--scale', (0.85 + depthAbs * 0.5).toFixed(2));
+
+    heartStage.appendChild(el);
+    wordEls.push(el);
+
+    setTimeout(() => el.classList.add('shown'), placedCount * STAGGER_MS + Math.random() * 200);
+    placedCount++;
+  }
+}
+
+/* ============================================================
+   ВРАЩЕНИЕ СЕРДЦА в 3D
+   Модель: ЦЕЛЬ пружины САМА каждый кадр чуть-чуть плывёт случайным образом
+   (мини-импульсы + затухание + мягкое притяжение к центру). Сердце через
+   пружину тянется за этой целью. И цель, и сердце ВСЕГДА в движении —
+   анимация непрерывная и плавная, без рывков и без пауз.
+   ============================================================ */
+let rotX = 0, rotY = 0;
+let velX = 0, velY = 0;
+let isDragging = false;
+let lastPX = 0, lastPY = 0;
+let lastMoveTime = 0;
+
+let targetRotX = 0, targetRotY = 0;
+let targetVelX = 0, targetVelY = 0;
+
+const DRAG_SENSITIVITY = 0.4;
+const MAX_TILT_X       = 40;     // макс наклон вверх/вниз
+const MAX_TILT_Y       = 60;     // макс поворот влево/вправо
+const WANDER_X_RANGE   = 25;     // диапазон, в котором ходит цель по X
+const WANDER_Y_RANGE   = 45;     // и по Y
+
+// Параметры ДРЕЙФА ЦЕЛИ — определяют темп автоанимации.
+// Меньше NOISE / больше TARGET_DAMP — спокойнее и медленнее.
+const TARGET_NOISE_X     = 0.020;
+const TARGET_NOISE_Y     = 0.032;
+const TARGET_DAMP        = 0.985;  // затухание скорости цели
+const TARGET_CENTERING_X = 0.0006; // мягкое возвращение цели к центру по X
+const TARGET_CENTERING_Y = 0.0004; // и по Y
+const TARGET_BOUNCE      = -0.5;   // отскок цели от границ wander-диапазона
+
+// Параметры ПРУЖИНЫ "сердце → цель"
+const SPRING_K    = 0.0010;
+const DAMP        = 0.93;
+const BOUNCE_KILL = 0.25;
+
+function clamp(v, mn, mx) { return v < mn ? mn : v > mx ? mx : v; }
+
+// Каждый кадр цель чуть-чуть толкается в случайную сторону, гасится и тянется
+// к центру. В сумме — мягкое броуновское блуждание без пауз и без скачков.
+function updateTargetDrift() {
+  targetVelX += (Math.random() - 0.5) * TARGET_NOISE_X;
+  targetVelY += (Math.random() - 0.5) * TARGET_NOISE_Y;
+  targetVelX -= targetRotX * TARGET_CENTERING_X;
+  targetVelY -= targetRotY * TARGET_CENTERING_Y;
+  targetVelX *= TARGET_DAMP;
+  targetVelY *= TARGET_DAMP;
+  targetRotX += targetVelX;
+  targetRotY += targetVelY;
+  if (targetRotX >  WANDER_X_RANGE) { targetRotX =  WANDER_X_RANGE; targetVelX *= TARGET_BOUNCE; }
+  if (targetRotX < -WANDER_X_RANGE) { targetRotX = -WANDER_X_RANGE; targetVelX *= TARGET_BOUNCE; }
+  if (targetRotY >  WANDER_Y_RANGE) { targetRotY =  WANDER_Y_RANGE; targetVelY *= TARGET_BOUNCE; }
+  if (targetRotY < -WANDER_Y_RANGE) { targetRotY = -WANDER_Y_RANGE; targetVelY *= TARGET_BOUNCE; }
+}
+
+function onDragStart(x, y) {
+  if (state !== 'done') return;
+  isDragging = true;
+  lastPX = x;
+  lastPY = y;
+  velX = 0;
+  velY = 0;
+  lastMoveTime = performance.now();
+  heart.classList.add('dragging');
+}
+
+function onDragMove(x, y) {
+  if (!isDragging) return;
+  const now = performance.now();
+  const dt = Math.max(1, now - lastMoveTime);
+  const dx = x - lastPX;
+  const dy = y - lastPY;
+  lastPX = x;
+  lastPY = y;
+  lastMoveTime = now;
+
+  rotY = clamp(rotY + dx * DRAG_SENSITIVITY, -MAX_TILT_Y, MAX_TILT_Y);
+  rotX = clamp(rotX - dy * DRAG_SENSITIVITY, -MAX_TILT_X, MAX_TILT_X);
+
+  const norm = 16 / dt;
+  velY =  dx * DRAG_SENSITIVITY * norm;
+  velX = -dy * DRAG_SENSITIVITY * norm;
+}
+
+function onDragEnd() {
+  if (!isDragging) return;
+  isDragging = false;
+  heart.classList.remove('dragging');
+  // Ставим цель в текущей позиции и даём ей часть инерции пальца —
+  // тогда дрейф цели поедет В ТУ ЖЕ сторону, и сердце продолжит туда же.
+  targetRotX = clamp(rotX, -WANDER_X_RANGE, WANDER_X_RANGE);
+  targetRotY = clamp(rotY, -WANDER_Y_RANGE, WANDER_Y_RANGE);
+  targetVelX = velX * 0.35;
+  targetVelY = velY * 0.35;
+}
+
+heart.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  onDragStart(e.clientX, e.clientY);
+});
+window.addEventListener('mousemove', (e) => onDragMove(e.clientX, e.clientY));
+window.addEventListener('mouseup', onDragEnd);
+window.addEventListener('mouseleave', onDragEnd);
+
+heart.addEventListener('touchstart', (e) => {
+  if (!e.touches.length) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  onDragStart(t.clientX, t.clientY);
+}, { passive: false });
+window.addEventListener('touchmove', (e) => {
+  if (!e.touches.length) return;
+  const t = e.touches[0];
+  onDragMove(t.clientX, t.clientY);
+}, { passive: false });
+window.addEventListener('touchend', onDragEnd);
+window.addEventListener('touchcancel', onDragEnd);
+
+function rotateLoop() {
+  if (!isDragging) {
+    updateTargetDrift();
+
+    velX += (targetRotX - rotX) * SPRING_K;
+    velY += (targetRotY - rotY) * SPRING_K;
+    velX *= DAMP;
+    velY *= DAMP;
+
+    rotX += velX;
+    rotY += velY;
+
+    if (rotX >  MAX_TILT_X) { rotX =  MAX_TILT_X; velX *= -BOUNCE_KILL; }
+    else if (rotX < -MAX_TILT_X) { rotX = -MAX_TILT_X; velX *= -BOUNCE_KILL; }
+    if (rotY >  MAX_TILT_Y) { rotY =  MAX_TILT_Y; velY *= -BOUNCE_KILL; }
+    else if (rotY < -MAX_TILT_Y) { rotY = -MAX_TILT_Y; velY *= -BOUNCE_KILL; }
+  }
+  heartStage.style.transform =
+    `rotateX(${rotX.toFixed(3)}deg) rotateY(${rotY.toFixed(3)}deg)`;
+  requestAnimationFrame(rotateLoop);
+}
+requestAnimationFrame(rotateLoop);
+
+btn.addEventListener('click', async () => {
+  if (state !== 'idle') return;
+  state = 'running';
+
+  btn.classList.add('hidden');
+  await new Promise(r => setTimeout(r, 250));
+
+  await typeCode();
+
+  await new Promise(r => setTimeout(r, 250));
+  await collapseToPoint();
+  await explode();
+
+  buildHeart();
+
+  state = 'done';
+  document.body.style.cursor = 'grab';
+});
+</script>
+</body>
+</html>
