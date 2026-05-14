@@ -742,7 +742,6 @@ button.cyber-button:active { transform: scale(0.98); }
       <span class="dot yellow"></span>
       <span class="dot green"></span>
       <span class="filename">settings.cfg</span>
-      <button class="close" id="settingsClose" aria-label="close">×</button>
     </div>
     <div class="body">
 
@@ -1422,7 +1421,6 @@ function replay() {
    ===================================================================== */
 const settingsBtn   = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
-const settingsClose = document.getElementById('settingsClose');
 
 let dirtyRebuild = false;       // флаг "нужна пересборка" — для мобилы
 let rebuildTimer = null;        // дебаунс на десктопе
@@ -1453,7 +1451,6 @@ settingsBtn.addEventListener('click', () => {
   if (settingsPanel.classList.contains('open')) closeSettings();
   else openSettings();
 });
-settingsClose.addEventListener('click', closeSettings);
 
 /* Привязка слайдера к настройкам.
    path = ['anim','drift']; fmt = (v)=>v+'×'; afterApply = функция-эффект */
